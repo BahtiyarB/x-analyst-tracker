@@ -6,16 +6,21 @@
 # x.com üzerinde elle kontrol edin.
 
 analysts:
-  - handle: glassnode
-    lang: en
-    focus: onchain
-
-  - handle: _checkmatey_
-    lang: en
-    focus: onchain
-
-  - handle: kriptobaris   # Barış Kardeş — DOĞRULA: gerçek handle'ı web'de arama YAPILMADI, placeholder'dır. Operatör doğrulamalı.
+  - handle: KardesBaris   # Barış Kardeş — DOĞRULANDI (Operatör, 2026-07-06: x.com/kardesbaris). Kursun onchain eğitmeni; Telegram backfill'indeki tweet linkleriyle de örtüşüyor.
     lang: tr
+    focus: onchain
+
+  - handle: glassnode      # DOĞRULANDI — Glassnode resmi (WoC yayıncısı)
+    lang: en
+    focus: onchain
+
+  - handle: _checkmatey_   # DOĞRULANDI — Checkmate/James Check (WoC 76 sayı + checkonchain)
+    lang: en
+    focus: onchain
+
+  # Aşağıdakiler WoC yazarları — handle'lar TAHMİNİ, Operatör doğrulamalı:
+  - handle: CryptoVizArt   # DOĞRULA: WoC yazarı CryptoVizArt
+    lang: en
     focus: onchain
 
 default_count: 50   # analist başına çekilecek tweet
