@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+cookies*.json
+*.session
+out/
+__pycache__/
+*.pyc

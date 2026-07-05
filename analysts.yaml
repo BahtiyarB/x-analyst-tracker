@@ -1,0 +1,21 @@
+# Takip edilen kripto analistleri (X kullanıcı adları, @ olmadan)
+#
+# NOT: Aşağıdaki handle'lar operatör tarafından doğrulanmalıdır.
+# Bu dosyadaki bazı girişler placeholder olabilir (web araması yapılmadan,
+# hafızadan/tahminen eklenmiştir). Yayına almadan önce her handle'ı
+# x.com üzerinde elle kontrol edin.
+
+analysts:
+  - handle: glassnode
+    lang: en
+    focus: onchain
+
+  - handle: _checkmatey_
+    lang: en
+    focus: onchain
+
+  - handle: kriptobaris   # Barış Kardeş — DOĞRULA: gerçek handle'ı web'de arama YAPILMADI, placeholder'dır. Operatör doğrulamalı.
+    lang: tr
+    focus: onchain
+
+default_count: 50   # analist başına çekilecek tweet
