@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
 # fetch_analysts.sh — analysts.yaml'daki her analist için jawond-bird ile
-# "from:<handle>" araması çalıştırır ve sonucu out/tweets_<handle>_<tarih>.json'a yazar.
+# "user-tweets <handle>" çalıştırır ve sonucu out/tweets_<handle>_<tarih>.json'a
+# yazar. (Önceden "search from:<handle>" kullanılıyordu; user-tweets daha
+# sağlam/doğrudan bir komut olduğu için tercih edildi — bkz. README "X
+# kırılganlığı" bölümü.)
 #
 # Kullanım:
 #   ./fetch_analysts.sh [TARIH]
 #   TARIH verilmezse bugünün tarihi (YYYYMMDD) kullanılır.
 #
-# Auth: AUTH_TOKEN / CT0 env değişkenlerinden ya da .env dosyasından okunur
-# (jawond-bird kendi cookie/env çözümlemesini yapar). Cookie yoksa jawond
-# hata verir; bu script o hatayı loglar ve diğer analistlerle devam eder.
+# Auth: Canlı X cookie'si Chrome tarayıcısından okunur (--chrome-profile).
+# Profil adı CHROME_PROFILE env değişkeniyle değiştirilebilir, varsayılan
+# "Profile 2"dir (operatörün canlı X oturumu bu profilde).
+#
+#   CHROME_PROFILE="Profile 2" ./fetch_analysts.sh
+#
+# Cookie okunamazsa jawond hata verir; bu script o hatayı loglar ve diğer
+# analistlerle devam eder (hata toleranslı).
 #
 # Bağımlılık YOK: PyYAML varsa onu kullanır, yoksa analysts.yaml'ı basit bir
 # regex ile ayrıştırır (yalnızca bu dosyadaki sade "key: value" yapısını
@@ -21,6 +29,7 @@ CONFIG_FILE="${SCRIPT_DIR}/analysts.yaml"
 JAWOND_BIN="${SCRIPT_DIR}/jawond-bird/dist/index.js"
 OUT_DIR="${SCRIPT_DIR}/out"
 DATE_TAG="${1:-$(date +%Y%m%d)}"
+CHROME_PROFILE="${CHROME_PROFILE:-Profile 2}"
 
 mkdir -p "${OUT_DIR}"
 
@@ -83,7 +92,7 @@ while read -r HANDLE COUNT; do
   OUT_FILE="${OUT_DIR}/tweets_${HANDLE}_${DATE_TAG}.json"
   echo "==> ${HANDLE} (n=${COUNT}) -> ${OUT_FILE}"
 
-  if node "${JAWOND_BIN}" search "from:${HANDLE}" -n "${COUNT}" --json > "${OUT_FILE}.tmp" 2> "${OUT_DIR}/tweets_${HANDLE}_${DATE_TAG}.err"; then
+  if node "${JAWOND_BIN}" user-tweets "${HANDLE}" -n "${COUNT}" --json --chrome-profile "${CHROME_PROFILE}" > "${OUT_FILE}.tmp" 2> "${OUT_DIR}/tweets_${HANDLE}_${DATE_TAG}.err"; then
     mv "${OUT_FILE}.tmp" "${OUT_FILE}"
     echo "    OK: ${OUT_FILE}"
   else

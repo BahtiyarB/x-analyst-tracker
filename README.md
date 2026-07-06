@@ -14,24 +14,28 @@ ChainWise'dan bagimsiz kullanilabilir.
 - [Kurulum](#kurulum)
 - [Auth (kimlik dogrulama)](#auth-kimlik-dogrulama)
 - [Kullanim](#kullanim)
-- [X kirilganligi ve query-id onarimi](#x-kirilganligi-ve-query-id-onarimi)
+- [X kirilganligi ve onarim](#x-kirilganligi-ve-onarim)
 - [ChainWise entegrasyonu](#chainwise-entegrasyonu)
 - [Ayri proje olarak kullanim](#ayri-proje-olarak-kullanim)
 - [Dizin yapisi](#dizin-yapisi)
 
 ## Ne ise yarar
 
-Bu proje su akisi otomatiklestirir:
+Bu proje su akisi otomatiklestirir (calisir durumda, uctan uca canli
+dogrulandi):
 
 1. `analysts.yaml` icinde takip edilecek kripto analistlerinin X handle'lari
    tanimlanir (onchain analistler, TR/EN karisik olabilir).
-2. `fetch_analysts.sh`, her analist icin `bird search "from:<handle>"`
-   komutunu calistirip son N tweet'i JSON olarak `out/` klasorune yazar.
+2. `fetch_analysts.sh`, her analist icin `bird user-tweets <handle>` komutunu
+   calistirip son N tweet'i JSON olarak `out/` klasorune yazar. Cookie,
+   Chrome "Profile 2" profilinden otomatik okunur (`--chrome-profile`).
 3. `bridge_to_chainwise.py` (opsiyonel), bu JSON dosyalarini okuyup her
-   tweet'i normalize eder (id, handle, created_at, text, url) ve ChainWise'in
-   `ingest_articles` tablosuna yazar — boylece ChainWise'in mevcut metin
-   sinyal cikarma hatti (bkz. asagida) tweetleri de bir "makale" gibi isleyip
-   trade sinyaline (entry/exit/outlook/level_watch) cevirebilir.
+   tweet'i normalize eder (id, handle, created_at, text, url, is_retweet) ve
+   ChainWise'in `ingest_articles` tablosuna yazar — boylece ChainWise'in
+   mevcut metin sinyal cikarma hatti (bkz. asagida) tweetleri de bir "makale"
+   gibi isleyip trade sinyaline (entry/exit/outlook/level_watch) cevirebilir.
+   Retweet'ler `--skip-retweets` ile atlanabilir (retweet bir analist gorusu
+   degildir).
 
 Amac: analistlerin acik/kapali pozisyon cagrilarini, seviye takiplerini ve
 piyasa yorumlarini elle takip etmek yerine otomatik toplayip yapilandirmak.
@@ -152,63 +156,144 @@ GraphQL/cookie yoluna dusulur.
 
 ## Kullanim
 
-Tek bir analistin son tweetlerini cekmek:
+Tek bir analistin son tweetlerini cekmek (ana kullanim — canli dogrulandi):
 
 ```bash
-node jawond-bird/dist/index.js search "from:glassnode" -n 50 --json
+node jawond-bird/dist/index.js user-tweets glassnode -n 50 --json --chrome-profile "Profile 2"
 ```
+
+Cikti KESIN sema: ust duzey JSON bir DIZI, her eleman
+`{id, text, createdAt, replyCount, retweetCount, likeCount, conversationId,
+author: {username, name}}` seklindedir. `createdAt` klasik Twitter/RFC2822
+formatindadir (ornek: `"Thu Jul 02 19:15:02 +0000 2026"`).
+
+(Eskiden `search "from:<handle>"` kullaniliyordu; `user-tweets` handle'a
+dogrudan baglandigi icin daha saglam/guvenilir bulundu ve hem
+`fetch_analysts.sh` hem yukaridaki ornek bu komuta gecirildi.)
 
 Tum `analysts.yaml` listesini toplu cekmek:
 
 ```bash
 ./fetch_analysts.sh 20260706
+# farkli bir Chrome profili kullanmak icin:
+CHROME_PROFILE="Profile 2" ./fetch_analysts.sh 20260706
 ```
 
 (Tarih argumani opsiyoneldir; verilmezse bugunun tarihi `YYYYMMDD` olarak
 kullanilir.) Cikti: `out/tweets_<handle>_<tarih>.json`. Bir analist
 basarisiz olursa (auth hatasi, handle degismis, rate-limit vb.) script
 o hatayi loglayip diger analistlerle devam eder; hata detayi
-`out/tweets_<handle>_<tarih>.err` dosyasina yazilir.
+`out/tweets_<handle>_<tarih>.err` dosyasina yazilir. Sonunda toplam/basarisiz
+sayisi ozetlenir.
 
-## X kirilganligi ve query-id onarimi
+## X kirilganligi ve onarim
 
-X, GraphQL sorgu ID'lerini (`query-id`) periyodik olarak degistirir; bu
-yuzden `search` gibi komutlar zamanla `HTTP 404`/`422` hatasi vermeye
-baslayabilir. Bu durumda:
+X, GraphQL sorgu ID'lerini (`query-id`) VE gerekli `featureSwitches`/
+`fieldToggles` setlerini periyodik olarak degistirir; bu yuzden `user-tweets`/
+`search` gibi komutlar zamanla `HTTP 404`/`422 GRAPHQL_VALIDATION_FAILED`
+hatasi vermeye baslayabilir.
+
+### 2026-07-06 gercek onarim vakasi
+
+Bu tarihte tam olarak bu kirilma yasandi ve iki ayri sorun tespit edilip
+duzeltildi:
+
+1. **Query-id yanlis eslestirme**: Eski `npm run graphql:update`
+   (`jawond-bird/scripts/update-query-ids.ts`) bundle icinde
+   `operationName` <-> `queryId` ciftlerini "en yakin eslesme" mantigiyla
+   regex'le buluyordu. Ancak minified bundle'da `queryId` HER ZAMAN
+   `operationName`'den ONCE, ayni obje icinde gelir; "en yakin" mantigi bir
+   onceki operation'in queryId'sini bir sonrakine kaydirabiliyordu. Sonuc:
+   `CreateTweet` ve `CreateRetweet` query-id'leri BIRBIRINE KARISMISTI
+   (CreateTweet'e aslinda CreateRetweet'in id'si atanmisti, tersi de gecerliydi).
+2. **Eksik/yanlis feature setleri**: `TweetDetail`/`SearchTimeline`/
+   `UserTweets` gibi okuma operationlari icin X, 2026'da 39 adet
+   `featureSwitches` (grok/*, payments, premium_content, jetfuel,
+   profile_label, rweb_video_screen gibi yeni bayraklar dahil) ve 8 adet
+   `fieldToggles` gondermeyi zorunlu kildi; eksik/eski bir set
+   `422 GRAPHQL_VALIDATION_FAILED` ile sonuclaniyordu. Ayrica `SearchTimeline`
+   artik GET degil **POST** olarak cagrilmali (query-string yerine JSON body).
+
+Bu onarim `jawond-bird/src/lib/twitter-client.ts` icindeki
+`TWEET_FEATURES`/`TWEET_FIELD_TOGGLES` sabitlerine islendi (39 feature + 8
+toggle) ve `SearchTimeline` cagrisi POST'a cevrildi.
+
+### Yeni yontem: bundle-extraction (`refresh-x-metadata.mjs`)
+
+Query-id yanlis-eslestirme sorununu kokten cozmek icin eski
+`update-query-ids.ts`'in yerini `jawond-bird/scripts/refresh-x-metadata.mjs`
+alir:
 
 ```bash
 cd jawond-bird
-npm run graphql:update
-npm run build
+node scripts/refresh-x-metadata.mjs
+npm run build   # query-ids.json dist/'e yansisin diye
 ```
 
-Bu komut, X'in web bundle'larindan guncel query-id'leri cekip
-`src/lib/query-ids.json` dosyasini tazeler (kullanilan endpoint:
-`x.com/i/api/graphql`, ilgili sorgu adi `SearchTimeline`). Sonrasinda
-yeniden derleme (`npm run build`) gereklidir.
+Mantik: `x.com/?lang=en` HTML'inden guncel
+`abs.twimg.com/responsive-web/client-web/main.*.js` bundle URL'ini bulur,
+indirir, ve her hedef operation (`CreateTweet`, `CreateRetweet`,
+`FavoriteTweet`, `TweetDetail`, `SearchTimeline`, `UserTweets`,
+`UserByScreenName`) icin **TAM blogu**
+(`{queryId:"...",operationName:"OP",operationType:"...",metadata:{
+featureSwitches:[...],fieldToggles:[...]}}`) tek bir regex'le, sabit
+siralamayi (`queryId` her zaman `operationName`'den once) esas alarak
+cikarir — boylece eski scriptteki "en yakin eslesme" hatasi tekrar
+edilmez. Sonuclar iki dosyaya yazilir:
+
+- `src/lib/query-ids.json` — operation -> queryId (jawond-bird'in zaten
+  kullandigi format/dosya).
+- `src/lib/x-features.json` — operation -> `{features: [...], toggles: [...]}`
+  (yeni dosya; su an SADECE uretiliyor, `twitter-client.ts` tarafindan
+  henuz OKUNMUYOR — twitter-client entegrasyonu opsiyonel sonraki bir adim
+  olarak birakildi).
+
+Sadece `fetch` + regex + `node:fs` kullanir, ekstra npm paketi gerekmez
+(Node >= 22). Calistirildiginda dogrulanan sonuc: `TweetDetail` query-id'si
+`jd3V43oDY9cY7obs1YMfbQ` (mevcut dogru degerle birebir eslesiyor), ve
+`CreateTweet`/`CreateRetweet`/`FavoriteTweet` icin eski dosyadaki yanlis
+eslesme tespit edilip duzeltildi.
 
 ## ChainWise entegrasyonu
 
 `bridge_to_chainwise.py`, `out/tweets_*.json` dosyalarini okuyup her tweeti
 ChainWise'in `ingest_articles` tablosuna (`src.common.models.Article`) yazan
-bir kopru scriptidir:
+bir kopru scriptidir. ChainWise kendi ayri sqlalchemy/uv ortamina sahip
+oldugu icin bu script **ChainWise repo'sunda `uv run` ile** calistirilmalidir:
 
 ```bash
-python3 bridge_to_chainwise.py \
-  --chainwise-repo /Users/ahmet/Projects/ChainWise/repo \
-  --input-dir ./out \
-  [--dry-run]
+cd /Users/ahmet/Projects/ChainWise/repo
+uv run python /Users/ahmet/Projects/x-analyst-tracker/bridge_to_chainwise.py \
+  /Users/ahmet/Projects/x-analyst-tracker/out/tweets_KardesBaris_*.json \
+  --skip-retweets
 ```
 
-Alan eslemesi:
+Sadece normalize edip sayilarini gormek (DB'ye YAZMADAN) icin `--dry-run`:
 
-| x-analyst-tracker | ingest_articles |
+```bash
+cd /Users/ahmet/Projects/ChainWise/repo
+uv run python /Users/ahmet/Projects/x-analyst-tracker/bridge_to_chainwise.py \
+  /Users/ahmet/Projects/x-analyst-tracker/out/tweets_KardesBaris_*.json \
+  --dry-run --skip-retweets
+```
+
+`--chainwise-repo` argumaninin varsayilani zaten
+`/Users/ahmet/Projects/ChainWise/repo`'dur; farkli bir yerde calisiyorsaniz
+override edin. Belirli dosya(lar) yerine tum `out/` klasorunu islemek icin
+`--input-dir ./out` kullanilabilir (dosya argumani verilmezse varsayilan
+budur).
+
+Alan eslemesi (canli `user-tweets --json` ciktisina gore, DOGRULANDI):
+
+| jawond-bird `user-tweets --json` alani | ingest_articles |
 |---|---|
-| `handle` | `source = f"x:{handle}"`, `author` |
-| tweet id + handle | `url = f"https://x.com/{handle}/status/{id}"` |
-| tweet metni | `content_text` |
-| tweet zaman damgasi | `published_at` |
-| sha256(content_text) | `content_hash` |
+| `id` | tweet id (url'de kullanilir) |
+| `author.username` | `source = f"x:{handle}"`, `author` |
+| `id` + `author.username` | `url = f"https://x.com/{handle}/status/{id}"` |
+| `text` | `content_text`, `title` (ilk 120 karakter) |
+| `createdAt` (RFC2822, `email.utils.parsedate_to_datetime` ile parse) | `published_at` (UTC) |
+| sha256(`text`) | `content_hash` |
+| `text.startswith("RT @")` | retweet tespiti — `--skip-retweets` ile atlanir |
 
 Bu tabloya yazilan tweetler, ChainWise'in **mevcut** metin sinyal
 cikarma hattindan gecer — yeni bir hat kurulmuyor:
@@ -219,17 +304,18 @@ cikarma hattindan gecer — yeni bir hat kurulmuyor:
   `status='new'` olan `ingest_articles` satirlarini alip ayni prompt ile
   isler ve `status='extracted'` yapar.
 
-Yani akis: `bird search` -> `out/tweets_*.json` -> `bridge_to_chainwise.py`
--> `ingest_articles(source="x:<handle>")` -> ChainWise'in var olan
-`extract_articles.py` calistirmasi -> sinyal.
+Yani akis: `bird user-tweets` -> `out/tweets_*.json` ->
+`bridge_to_chainwise.py --skip-retweets` -> `ingest_articles(source="x:<handle>")`
+-> ChainWise'in var olan `extract_articles.py` calistirmasi -> sinyal.
 
-**Onemli — dogrulanmamis kisimlar:** `bridge_to_chainwise.py` icindeki
-tweet JSON semasi (id/text/created_at alan adlari) jawond-bird'in gercek
-cookie ile calistirilmis bir `search --json` ciktisiyla henuz
-KARSILASTIRILMADI (bu calisma agla istegi atmadan yapildi). Script
-icinde ilgili noktalar `TODO(cookie-dogrulama)` etiketiyle isaretlendi;
-ilk gercek cookie testinden sonra bu TODO'lar gozden gecirilip
-duzeltilmeli.
+Idempotency: `Article.url` UNIQUE kisitina dayanir (`ON CONFLICT (url) DO
+NOTHING`); ayni tweet ikinci kez calistirildiginda atlanir.
+
+**Dogrulama durumu:** Tweet JSON semasi (id/text/createdAt/author alan
+adlari) jawond-bird `user-tweets --json` komutunun canli, cookie ile
+dogrulanmis gercek ciktisiyla karsilastirilarak kesinlestirildi (bkz.
+yukaridaki "Kullanim" bolumundeki ornek cikti). Script artik iskelet/TODO
+degil, tamamlanmis haldedir.
 
 ## Ayri proje olarak kullanim
 
@@ -246,11 +332,13 @@ sadece ChainWise'a bagli calismak istendiginde gereklidir ve
 
 ```
 x-analyst-tracker/
-├── jawond-bird/          # secilen CLI temeli (calisan bird klonu)
+├── jawond-bird/                          # secilen CLI temeli (calisan bird klonu)
+│   ├── scripts/refresh-x-metadata.mjs    # bundle-tabanli query-id + feature/toggle tazeleyici
+│   └── src/lib/query-ids.json            # guncel query-id'ler (jawond-bird build'ine dahil)
 ├── enc0der-bird/         # referans klon (CLI importu kirik, kutuphaneler icin bakilir)
 ├── analysts.yaml         # takip edilen analist listesi (operator dogrulamali)
-├── fetch_analysts.sh     # toplu cekim scripti
-├── bridge_to_chainwise.py# ChainWise ingest_articles koprusu (iskelet)
+├── fetch_analysts.sh     # toplu cekim scripti (user-tweets tabanli)
+├── bridge_to_chainwise.py# ChainWise ingest_articles koprusu (tamamlandi, canli dogrulandi)
 ├── out/                  # cekilen tweet JSON'lari (git'e girmez)
 └── .gitignore
 ```
