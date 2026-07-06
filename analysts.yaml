@@ -30,4 +30,16 @@ analysts:
     lang: tr
     focus: onchain
 
+  - handle: arkham         # DOĞRULANDI (Operatör, 2026-07-06). Arkham Intelligence: ENTITY-attributed
+                           # narrative sinyaller ("Saylor $1.25B satıyor", "Alman Hükümeti sattı").
+                           # whale_alert'ten farklı: yorumlanmış önemli olay = sinyal-tıplamaya uygun.
+    lang: en
+    focus: onchain
+
+  - handle: whale_alert    # DOĞRULANDI (Operatör, 2026-07-06). VERİ-FEED botu: balina transferleri
+                           # ("5000 BTC unknown->Binance"). Trading-iddiası DEĞİL, on-chain EVENT verisi.
+                           # Sinyal-tıplama yerine yapılandırılmış whale-flow parse'ı daha değerli (bkz. teklif).
+    lang: en
+    focus: whale_flow
+
 default_count: 50   # analist başına çekilecek tweet
