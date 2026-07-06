@@ -20,6 +20,8 @@ const FALLBACK_QUERY_IDS = {
   UserByScreenName: '2qvSHpkWTMS9i0zJAwDNiA',
   ListLatestTweetsTimeline: 'Iql5aRVyFxNZ-ORcDV_TwQ',
   ListOwnerships: 'S88Gftub7IcTsmSFl8mOHg',
+  BookmarkSearchTimeline: 'I79RO1ZqoyWMPK1EST3FBw',
+  UserArticlesTweets: 'tC8Mkunj-1cqFwXmw0DQRg',
 } as const;
 
 type OperationName = keyof typeof FALLBACK_QUERY_IDS;
@@ -726,6 +728,201 @@ export class TwitterClient {
           const mapped = this.mapTweetResult(result);
           if (mapped) tweets.push(mapped);
         }
+      }
+
+      return { success: true, tweets: cursor ? tweets : tweets.slice(0, count), nextCursor };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  /**
+   * Fetch the authenticated account's bookmarks via BookmarkSearchTimeline.
+   *
+   * X's bookmarks endpoint is actually a *search* query under the hood: an
+   * empty `rawQuery` 400s with SearchQueryParsingException(ERROR_EMPTY_QUERY),
+   * so we send a query that's a tautology over the whole bookmark set
+   * (`-filter:replies OR filter:replies` matches every bookmark regardless of
+   * reply status) rather than filtering to a subset. Confirmed live
+   * 2026-07-06 against /i/bookmarks: this returns the same set of tweets and
+   * pagination cursors as the actual bookmarks page.
+   *
+   * Same cursor pagination contract as getUserTweets/getListTweets: pass the
+   * previous call's `nextCursor` (a "Bottom" TimelineTimelineCursor value) to
+   * page further back through bookmark history.
+   */
+  async getBookmarks(count = 40, cursor?: string): Promise<PaginatedTweetsResult> {
+    const variables: Record<string, unknown> = {
+      rawQuery: '-filter:replies OR filter:replies',
+      count,
+    };
+    if (cursor) variables.cursor = cursor;
+
+    const params = new URLSearchParams({
+      variables: JSON.stringify(variables),
+      features: JSON.stringify(TWEET_FEATURES),
+    });
+
+    const url = `${TWITTER_API_BASE}/${QUERY_IDS.BookmarkSearchTimeline}/BookmarkSearchTimeline?${params}`;
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        return { success: false, error: `HTTP ${response.status}: ${text.slice(0, 200)}` };
+      }
+
+      const data = (await response.json()) as {
+        data?: {
+          search_by_raw_query?: {
+            bookmarks_search_timeline?: {
+              timeline?: {
+                instructions?: Array<{
+                  type?: string;
+                  entries?: Array<{
+                    content?: {
+                      entryType?: string;
+                      cursorType?: string;
+                      value?: string;
+                      itemContent?: {
+                        tweet_results?: {
+                          result?: GraphqlTweetResult;
+                        };
+                      };
+                    };
+                  }>;
+                }>;
+              };
+            };
+          };
+        };
+        errors?: Array<{ message: string }>;
+      };
+
+      const instructions = data.data?.search_by_raw_query?.bookmarks_search_timeline?.timeline?.instructions ?? [];
+
+      const tweets: TweetData[] = [];
+      let nextCursor: string | undefined;
+
+      for (const instruction of instructions) {
+        for (const entry of instruction.entries ?? []) {
+          const content = entry.content;
+          if (content?.entryType === 'TimelineTimelineCursor') {
+            if (content.cursorType === 'Bottom' && content.value) {
+              nextCursor = content.value;
+            }
+            continue;
+          }
+          const result = content?.itemContent?.tweet_results?.result;
+          const mapped = this.mapTweetResult(result);
+          if (mapped) tweets.push(mapped);
+        }
+      }
+
+      // Only treat `errors` as fatal when we found no tweets and no
+      // pagination cursor either, since X sometimes returns partial GraphQL
+      // errors for unrelated nested fields alongside usable timeline data.
+      if (data.errors && data.errors.length > 0 && tweets.length === 0 && !nextCursor) {
+        return { success: false, error: data.errors.map((e) => e.message).join(', ') };
+      }
+
+      return { success: true, tweets: cursor ? tweets : tweets.slice(0, count), nextCursor };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  /**
+   * Fetch a user's X long-form Articles via UserArticlesTweets.
+   *
+   * Same response/pagination shape as getUserTweets (data.user.result.timeline
+   * .timeline.instructions), but scoped to the user's published Articles
+   * rather than their full tweet timeline. Confirmed live 2026-07-06:
+   * requires `includePromotedContent` and `withVoice` in variables or the
+   * request 422s with GRAPHQL_VALIDATION_FAILED.
+   */
+  async getUserArticles(userId: string, count = 20, cursor?: string): Promise<PaginatedTweetsResult> {
+    const variables: Record<string, unknown> = {
+      userId,
+      count,
+      includePromotedContent: false,
+      withVoice: true,
+    };
+    if (cursor) variables.cursor = cursor;
+
+    const params = new URLSearchParams({
+      variables: JSON.stringify(variables),
+      features: JSON.stringify(TWEET_FEATURES),
+    });
+
+    const url = `${TWITTER_API_BASE}/${QUERY_IDS.UserArticlesTweets}/UserArticlesTweets?${params}`;
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        return { success: false, error: `HTTP ${response.status}: ${text.slice(0, 200)}` };
+      }
+
+      const data = (await response.json()) as {
+        data?: {
+          user?: {
+            result?: {
+              timeline?: {
+                timeline?: {
+                  instructions?: Array<{
+                    type?: string;
+                    entries?: Array<{
+                      content?: {
+                        entryType?: string;
+                        cursorType?: string;
+                        value?: string;
+                        itemContent?: {
+                          tweet_results?: {
+                            result?: GraphqlTweetResult;
+                          };
+                        };
+                      };
+                    }>;
+                  }>;
+                };
+              };
+            };
+          };
+        };
+        errors?: Array<{ message: string }>;
+      };
+
+      const instructions = data.data?.user?.result?.timeline?.timeline?.instructions ?? [];
+      const tweets: TweetData[] = [];
+      let nextCursor: string | undefined;
+
+      for (const instruction of instructions) {
+        if (instruction.type === 'TimelinePinEntry') continue;
+        for (const entry of instruction.entries ?? []) {
+          const content = entry.content;
+          if (content?.entryType === 'TimelineTimelineCursor') {
+            if (content.cursorType === 'Bottom' && content.value) {
+              nextCursor = content.value;
+            }
+            continue;
+          }
+          const result = content?.itemContent?.tweet_results?.result;
+          const mapped = this.mapTweetResult(result);
+          if (mapped) tweets.push(mapped);
+        }
+      }
+
+      if (data.errors && data.errors.length > 0 && tweets.length === 0 && !nextCursor) {
+        return { success: false, error: data.errors.map((e) => e.message).join(', ') };
       }
 
       return { success: true, tweets: cursor ? tweets : tweets.slice(0, count), nextCursor };

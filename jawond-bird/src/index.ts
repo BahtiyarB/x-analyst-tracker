@@ -990,6 +990,187 @@ program
     printTweets(finalTweets, { json: cmdOpts.json, emptyMessage: 'No tweets found.' });
   });
 
+// Bookmarks command - fetch the current account's bookmarked tweets
+program
+  .command('bookmarks')
+  .description("Fetch the current account's bookmarked tweets")
+  .option('-n, --count <number>', 'Number of bookmarks to fetch', '40')
+  .option('--json', 'Output as JSON')
+  .option('--all', 'Paginate through the full bookmark history using cursors')
+  .option('--max <number>', 'Max bookmarks to collect when using --all', '800')
+  .action(async (cmdOpts: { count?: string; json?: boolean; all?: boolean; max?: string }) => {
+    const opts = program.opts();
+    const count = Number.parseInt(cmdOpts.count || '40', 10);
+
+    const { cookies, warnings } = await resolveCredentials({
+      authToken: opts.authToken,
+      ct0: opts.ct0,
+      chromeProfile: opts.chromeProfile || config.chromeProfile,
+      firefoxProfile: opts.firefoxProfile || config.firefoxProfile,
+      allowChrome: config.allowChrome ?? true,
+      allowFirefox: config.allowFirefox ?? true,
+    });
+
+    for (const warning of warnings) {
+      console.error(`⚠️ ${warning}`);
+    }
+
+    if (!cookies.authToken || !cookies.ct0) {
+      console.error('❌ Missing required credentials');
+      process.exit(1);
+    }
+
+    const client = new TwitterClient({ cookies });
+
+    if (!cmdOpts.all) {
+      const result = await client.getBookmarks(count);
+
+      if (result.success && result.tweets) {
+        printTweets(result.tweets, { json: cmdOpts.json, emptyMessage: 'No bookmarks found.' });
+      } else {
+        console.error(`❌ Failed to fetch bookmarks: ${result.error}`);
+        process.exit(1);
+      }
+      return;
+    }
+
+    // --all: page backward through bookmarks via cursors until we hit `--max`,
+    // the cursor stops advancing, or a page yields no new bookmarks.
+    const max = Number.parseInt(cmdOpts.max || '800', 10);
+    const seen = new Set<string>();
+    const allTweets: TweetData[] = [];
+    let cursor: string | undefined;
+    let page = 0;
+
+    while (allTweets.length < max) {
+      page += 1;
+      const result = await client.getBookmarks(100, cursor);
+
+      if (!result.success) {
+        console.error(`❌ Failed to fetch page ${page}: ${result.error}`);
+        break;
+      }
+
+      const pageTweets = result.tweets ?? [];
+      let newCount = 0;
+      for (const t of pageTweets) {
+        if (!t.id || seen.has(t.id)) continue;
+        seen.add(t.id);
+        allTweets.push(t);
+        newCount += 1;
+      }
+
+      console.error(`bookmarks: ${allTweets.length} tweet, devam... (page ${page}, +${newCount} new)`);
+
+      if (!result.nextCursor || result.nextCursor === cursor || newCount === 0) {
+        break;
+      }
+
+      cursor = result.nextCursor;
+
+      if (allTweets.length >= max) break;
+
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+
+    const finalTweets = allTweets.slice(0, max);
+    printTweets(finalTweets, { json: cmdOpts.json, emptyMessage: 'No bookmarks found.' });
+  });
+
+// User-articles command - fetch a user's X long-form Articles
+program
+  .command('user-articles')
+  .description("Fetch a user's X long-form Articles by handle")
+  .argument('<handle>', 'Handle/username to fetch Articles for (e.g. "clawdbot" or "@clawdbot")')
+  .option('-n, --count <number>', 'Number of Articles to fetch', '20')
+  .option('--json', 'Output as JSON')
+  .option('--all', 'Paginate through the full Articles history using cursors')
+  .option('--max <number>', 'Max Articles to collect when using --all', '800')
+  .action(async (handle: string, cmdOpts: { count?: string; json?: boolean; all?: boolean; max?: string }) => {
+    const opts = program.opts();
+    const count = Number.parseInt(cmdOpts.count || '20', 10);
+
+    const { cookies, warnings } = await resolveCredentials({
+      authToken: opts.authToken,
+      ct0: opts.ct0,
+      chromeProfile: opts.chromeProfile || config.chromeProfile,
+      firefoxProfile: opts.firefoxProfile || config.firefoxProfile,
+      allowChrome: config.allowChrome ?? true,
+      allowFirefox: config.allowFirefox ?? true,
+    });
+
+    for (const warning of warnings) {
+      console.error(`⚠️ ${warning}`);
+    }
+
+    if (!cookies.authToken || !cookies.ct0) {
+      console.error('❌ Missing required credentials');
+      process.exit(1);
+    }
+
+    const client = new TwitterClient({ cookies });
+
+    const userResult = await client.getUserByScreenName(handle);
+    if (!userResult.success || !userResult.user) {
+      console.error(`❌ Failed to resolve user @${handle.replace(/^@/, '')}: ${userResult.error}`);
+      process.exit(1);
+    }
+
+    if (!cmdOpts.all) {
+      const result = await client.getUserArticles(userResult.user.id, count);
+
+      if (result.success && result.tweets) {
+        printTweets(result.tweets, { json: cmdOpts.json, emptyMessage: 'No Articles found.' });
+      } else {
+        console.error(`❌ Failed to fetch Articles: ${result.error}`);
+        process.exit(1);
+      }
+      return;
+    }
+
+    // --all: page backward through Articles via cursors until we hit `--max`,
+    // the cursor stops advancing, or a page yields no new Articles.
+    const max = Number.parseInt(cmdOpts.max || '800', 10);
+    const seen = new Set<string>();
+    const allTweets: TweetData[] = [];
+    let cursor: string | undefined;
+    let page = 0;
+
+    while (allTweets.length < max) {
+      page += 1;
+      const result = await client.getUserArticles(userResult.user.id, 100, cursor);
+
+      if (!result.success) {
+        console.error(`❌ Failed to fetch page ${page}: ${result.error}`);
+        break;
+      }
+
+      const pageTweets = result.tweets ?? [];
+      let newCount = 0;
+      for (const t of pageTweets) {
+        if (!t.id || seen.has(t.id)) continue;
+        seen.add(t.id);
+        allTweets.push(t);
+        newCount += 1;
+      }
+
+      console.error(`${handle}: ${allTweets.length} article, devam... (page ${page}, +${newCount} new)`);
+
+      if (!result.nextCursor || result.nextCursor === cursor || newCount === 0) {
+        break;
+      }
+
+      cursor = result.nextCursor;
+
+      if (allTweets.length >= max) break;
+
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+
+    const finalTweets = allTweets.slice(0, max);
+    printTweets(finalTweets, { json: cmdOpts.json, emptyMessage: 'No Articles found.' });
+  });
+
 // Mentions command - shortcut to search for @username mentions
 program
   .command('mentions')
