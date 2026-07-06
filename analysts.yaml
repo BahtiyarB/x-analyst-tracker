@@ -18,8 +18,7 @@ analysts:
     lang: en
     focus: onchain
 
-  # Aşağıdakiler WoC yazarları — handle'lar TAHMİNİ, Operatör doğrulamalı:
-  - handle: CryptoVizArt   # DOĞRULA: WoC yazarı CryptoVizArt
+  - handle: cryptovizart   # DOĞRULANDI (Operatör, 2026-07-06: x.com/cryptovizart). WoC yazarı (55 sayı).
     lang: en
     focus: onchain
 
