@@ -18,6 +18,8 @@ const FALLBACK_QUERY_IDS = {
   SearchTimeline: 'Tp1sewRU1AsZpBWhqCZicQ',
   UserTweets: 'hr4gzZONlq23okjU8fIe_A',
   UserByScreenName: '2qvSHpkWTMS9i0zJAwDNiA',
+  ListLatestTweetsTimeline: 'Iql5aRVyFxNZ-ORcDV_TwQ',
+  ListOwnerships: 'S88Gftub7IcTsmSFl8mOHg',
 } as const;
 
 type OperationName = keyof typeof FALLBACK_QUERY_IDS;
@@ -200,6 +202,17 @@ export interface CurrentUserResult {
     username: string;
     name: string;
   };
+  error?: string;
+}
+
+export interface ListData {
+  id: string;
+  name: string;
+}
+
+export interface MyListsResult {
+  success: boolean;
+  lists?: ListData[];
   error?: string;
 }
 
@@ -636,6 +649,92 @@ export class TwitterClient {
   }
 
   /**
+   * Fetch a list's latest tweets timeline via ListLatestTweetsTimeline.
+   *
+   * Same pagination contract as getUserTweets: pass the previous call's
+   * `nextCursor` (a "Bottom" TimelineTimelineCursor value) to page further
+   * back through the list's history.
+   */
+  async getListTweets(listId: string, count = 40, cursor?: string): Promise<PaginatedTweetsResult> {
+    const variables: Record<string, unknown> = { listId, count };
+    if (cursor) variables.cursor = cursor;
+
+    const params = new URLSearchParams({
+      variables: JSON.stringify(variables),
+      features: JSON.stringify(TWEET_FEATURES),
+    });
+
+    const url = `${TWITTER_API_BASE}/${QUERY_IDS.ListLatestTweetsTimeline}/ListLatestTweetsTimeline?${params}`;
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        return { success: false, error: `HTTP ${response.status}: ${text.slice(0, 200)}` };
+      }
+
+      const data = (await response.json()) as {
+        data?: {
+          list?: {
+            tweets_timeline?: {
+              timeline?: {
+                instructions?: Array<{
+                  type?: string;
+                  entries?: Array<{
+                    content?: {
+                      entryType?: string;
+                      cursorType?: string;
+                      value?: string;
+                      itemContent?: {
+                        tweet_results?: {
+                          result?: GraphqlTweetResult;
+                        };
+                      };
+                    };
+                  }>;
+                }>;
+              };
+            };
+          };
+        };
+        errors?: Array<{ message: string }>;
+      };
+
+      if (data.errors && data.errors.length > 0) {
+        return { success: false, error: data.errors.map((e) => e.message).join(', ') };
+      }
+
+      const instructions = data.data?.list?.tweets_timeline?.timeline?.instructions ?? [];
+      const tweets: TweetData[] = [];
+      let nextCursor: string | undefined;
+
+      for (const instruction of instructions) {
+        if (instruction.type === 'TimelinePinEntry') continue;
+        for (const entry of instruction.entries ?? []) {
+          const content = entry.content;
+          if (content?.entryType === 'TimelineTimelineCursor') {
+            if (content.cursorType === 'Bottom' && content.value) {
+              nextCursor = content.value;
+            }
+            continue;
+          }
+          const result = content?.itemContent?.tweet_results?.result;
+          const mapped = this.mapTweetResult(result);
+          if (mapped) tweets.push(mapped);
+        }
+      }
+
+      return { success: true, tweets: cursor ? tweets : tweets.slice(0, count), nextCursor };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  /**
    * Post a new tweet
    */
   async tweet(text: string): Promise<TweetResult> {
@@ -1008,6 +1107,94 @@ export class TwitterClient {
       success: false,
       error: lastError ?? 'Unknown error fetching current user',
     };
+  }
+
+  /**
+   * Get the lists owned by the current authenticated account via
+   * ListOwnerships. Resolves the current user id through getCurrentUser
+   * first, then walks the ListOwnerships timeline for `list` entries.
+   */
+  async getMyLists(): Promise<MyListsResult> {
+    const currentUser = await this.getCurrentUser();
+    if (!currentUser.success || !currentUser.user) {
+      return { success: false, error: currentUser.error ?? 'Could not determine current user' };
+    }
+
+    // ListOwnerships' schema requires `isListMemberTargetUserId` to be set
+    // (confirmed live 2026-07-06: omitting it 422s with GRAPHQL_VALIDATION_FAILED
+    // on the `isListMemberTargetUserId` variable). The current user's own id
+    // works fine here since we only care about list ownership, not membership.
+    const variables = {
+      userId: currentUser.user.id,
+      count: 100,
+      isListMemberTargetUserId: currentUser.user.id,
+    };
+
+    const params = new URLSearchParams({
+      variables: JSON.stringify(variables),
+      features: JSON.stringify(TWEET_FEATURES),
+    });
+
+    const url = `${TWITTER_API_BASE}/${QUERY_IDS.ListOwnerships}/ListOwnerships?${params}`;
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        return { success: false, error: `HTTP ${response.status}: ${text.slice(0, 200)}` };
+      }
+
+      // biome-ignore lint/suspicious/noExplicitAny: list ownership payload shape
+      // varies across schema revisions; we defensively probe several paths below.
+      const data = (await response.json()) as any;
+
+      const instructions: Array<{ entries?: Array<{ content?: unknown }> }> =
+        data?.data?.user?.result?.timeline?.timeline?.instructions ??
+        data?.data?.user?.result?.list_timeline?.timeline?.instructions ??
+        [];
+
+      // X returns partial GraphQL errors (BadRequest/DecodeException) for
+      // unrelated nested fields (e.g. `default_banner_media_results.result`)
+      // even when the list data we care about decoded fine. Only treat
+      // `errors` as fatal when we couldn't find any usable list data.
+      if (data.errors && data.errors.length > 0 && instructions.length === 0) {
+        return { success: false, error: data.errors.map((e: { message: string }) => e.message).join(', ') };
+      }
+
+      const lists: ListData[] = [];
+      const seen = new Set<string>();
+
+      for (const instruction of instructions) {
+        for (const entry of instruction.entries ?? []) {
+          // biome-ignore lint/suspicious/noExplicitAny: probing multiple possible shapes
+          const content = entry.content as any;
+          const itemContent = content?.itemContent;
+          const list =
+            itemContent?.list_results?.result ??
+            itemContent?.list ??
+            content?.list_results?.result ??
+            content?.list;
+
+          if (!list) continue;
+
+          const id: string | undefined = list.id_str ?? list.rest_id ?? list.id;
+          const name: string | undefined = list.name;
+
+          if (id && name && !seen.has(id)) {
+            seen.add(id);
+            lists.push({ id, name });
+          }
+        }
+      }
+
+      return { success: true, lists };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
   }
 
   /**
