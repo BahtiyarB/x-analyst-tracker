@@ -22,4 +22,12 @@ analysts:
     lang: en
     focus: onchain
 
+  - handle: cddstamp       # DOĞRULANDI (Operatör, 2026-07-06: x.com/cddstamp)
+    lang: en
+    focus: onchain
+
+  - handle: nakipektas     # DOĞRULANDI (Operatör, 2026-07-06: x.com/nakipektas)
+    lang: tr
+    focus: onchain
+
 default_count: 50   # analist başına çekilecek tweet
