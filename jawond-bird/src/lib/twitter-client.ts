@@ -174,6 +174,13 @@ export interface SearchResult {
   error?: string;
 }
 
+export interface PaginatedTweetsResult {
+  success: boolean;
+  tweets?: TweetData[];
+  nextCursor?: string;
+  error?: string;
+}
+
 export interface UserData {
   id: string;
   username: string;
@@ -528,15 +535,22 @@ export class TwitterClient {
 
   /**
    * Fetch a user's recent tweets (their profile timeline) via UserTweets.
+   *
+   * Pass `cursor` (the `value` of a "Bottom" TimelineTimelineCursor entry from
+   * a previous call's `nextCursor`) to page further back into the user's
+   * history. Returns the tweets found on this page plus the next page's
+   * bottom cursor (if any) so callers can keep paginating until the cursor
+   * stops advancing or no new tweets are returned.
    */
-  async getUserTweets(userId: string, count = 20): Promise<SearchResult> {
-    const variables = {
+  async getUserTweets(userId: string, count = 20, cursor?: string): Promise<PaginatedTweetsResult> {
+    const variables: Record<string, unknown> = {
       userId,
       count,
       includePromotedContent: false,
       withQuickPromoteEligibilityTweetFields: false,
       withVoice: true,
     };
+    if (cursor) variables.cursor = cursor;
 
     const params = new URLSearchParams({
       variables: JSON.stringify(variables),
@@ -567,6 +581,9 @@ export class TwitterClient {
                     type?: string;
                     entries?: Array<{
                       content?: {
+                        entryType?: string;
+                        cursorType?: string;
+                        value?: string;
                         itemContent?: {
                           tweet_results?: {
                             result?: GraphqlTweetResult;
@@ -589,6 +606,7 @@ export class TwitterClient {
 
       const instructions = data.data?.user?.result?.timeline?.timeline?.instructions ?? [];
       const tweets: TweetData[] = [];
+      let nextCursor: string | undefined;
 
       for (const instruction of instructions) {
         // TimelinePinEntry carries a pinned tweet in a singular `entry`, which
@@ -596,13 +614,22 @@ export class TwitterClient {
         // TimelineAddEntries `entries` list already covers recent tweets.
         if (instruction.type === 'TimelinePinEntry') continue;
         for (const entry of instruction.entries ?? []) {
-          const result = entry.content?.itemContent?.tweet_results?.result;
+          const content = entry.content;
+          // TimelineTimelineCursor entries mark pagination points, not tweets.
+          // The "Bottom" cursor is what we need to request the next page.
+          if (content?.entryType === 'TimelineTimelineCursor') {
+            if (content.cursorType === 'Bottom' && content.value) {
+              nextCursor = content.value;
+            }
+            continue;
+          }
+          const result = content?.itemContent?.tweet_results?.result;
           const mapped = this.mapTweetResult(result);
           if (mapped) tweets.push(mapped);
         }
       }
 
-      return { success: true, tweets: tweets.slice(0, count) };
+      return { success: true, tweets: cursor ? tweets : tweets.slice(0, count), nextCursor };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }

@@ -758,7 +758,9 @@ program
   .argument('<handle>', 'Handle/username to fetch tweets for (e.g. "clawdbot" or "@clawdbot")')
   .option('-n, --count <number>', 'Number of tweets to fetch', '20')
   .option('--json', 'Output as JSON')
-  .action(async (handle: string, cmdOpts: { count?: string; json?: boolean }) => {
+  .option('--all', 'Paginate through the full timeline history using cursors')
+  .option('--max <number>', 'Max tweets to collect when using --all', '800')
+  .action(async (handle: string, cmdOpts: { count?: string; json?: boolean; all?: boolean; max?: string }) => {
     const opts = program.opts();
     const count = Number.parseInt(cmdOpts.count || '20', 10);
 
@@ -788,14 +790,59 @@ program
       process.exit(1);
     }
 
-    const result = await client.getUserTweets(userResult.user.id, count);
+    if (!cmdOpts.all) {
+      const result = await client.getUserTweets(userResult.user.id, count);
 
-    if (result.success && result.tweets) {
-      printTweets(result.tweets, { json: cmdOpts.json, emptyMessage: 'No tweets found.' });
-    } else {
-      console.error(`❌ Failed to fetch tweets: ${result.error}`);
-      process.exit(1);
+      if (result.success && result.tweets) {
+        printTweets(result.tweets, { json: cmdOpts.json, emptyMessage: 'No tweets found.' });
+      } else {
+        console.error(`❌ Failed to fetch tweets: ${result.error}`);
+        process.exit(1);
+      }
+      return;
     }
+
+    // --all: page backward through the timeline via cursors until we hit
+    // `--max`, the cursor stops advancing, or a page yields no new tweets.
+    const max = Number.parseInt(cmdOpts.max || '800', 10);
+    const seen = new Set<string>();
+    const allTweets: TweetData[] = [];
+    let cursor: string | undefined;
+    let page = 0;
+
+    while (allTweets.length < max) {
+      page += 1;
+      const result = await client.getUserTweets(userResult.user.id, 100, cursor);
+
+      if (!result.success) {
+        console.error(`❌ Failed to fetch page ${page}: ${result.error}`);
+        break;
+      }
+
+      const pageTweets = result.tweets ?? [];
+      let newCount = 0;
+      for (const t of pageTweets) {
+        if (!t.id || seen.has(t.id)) continue;
+        seen.add(t.id);
+        allTweets.push(t);
+        newCount += 1;
+      }
+
+      console.error(`${handle}: ${allTweets.length} tweet, devam... (page ${page}, +${newCount} new)`);
+
+      if (!result.nextCursor || result.nextCursor === cursor || newCount === 0) {
+        break;
+      }
+
+      cursor = result.nextCursor;
+
+      if (allTweets.length >= max) break;
+
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+
+    const finalTweets = allTweets.slice(0, max);
+    printTweets(finalTweets, { json: cmdOpts.json, emptyMessage: 'No tweets found.' });
   });
 
 // Mentions command - shortcut to search for @username mentions
