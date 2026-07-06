@@ -16,6 +16,8 @@ const FALLBACK_QUERY_IDS = {
   FavoriteTweet: 'lI07N6Otwv1PhnEgXILM7A',
   TweetDetail: 'nBS-WpgA6ZG0CyNHD517JQ',
   SearchTimeline: 'Tp1sewRU1AsZpBWhqCZicQ',
+  UserTweets: 'hr4gzZONlq23okjU8fIe_A',
+  UserByScreenName: '2qvSHpkWTMS9i0zJAwDNiA',
 } as const;
 
 type OperationName = keyof typeof FALLBACK_QUERY_IDS;
@@ -85,6 +87,42 @@ const TWEET_FIELD_TOGGLES = {
   withDisallowedReplyControls: false,
 } as const;
 
+// featureSwitches for UserByScreenName, per the current x.com client bundle.
+const USER_BY_SCREEN_NAME_FEATURES = {
+  hidden_profile_subscriptions_enabled: true,
+  profile_label_improvements_pcf_label_in_post_enabled: true,
+  responsive_web_profile_redirect_enabled: true,
+  rweb_tipjar_consumption_enabled: true,
+  verified_phone_label_enabled: false,
+  subscriptions_verification_info_is_identity_verified_enabled: true,
+  subscriptions_verification_info_verified_since_enabled: true,
+  highlights_tweets_tab_ui_enabled: true,
+  responsive_web_twitter_article_notes_tab_enabled: true,
+  subscriptions_feature_can_gift_premium: true,
+  creator_subscriptions_tweet_preview_api_enabled: true,
+  responsive_web_graphql_skip_user_profile_image_extensions_enabled: false,
+  responsive_web_graphql_timeline_navigation_enabled: true,
+} as const;
+
+const USER_BY_SCREEN_NAME_FIELD_TOGGLES = {
+  withAuxiliaryUserLabels: true,
+  withPayments: false,
+} as const;
+
+type GraphqlUserResult = {
+  rest_id?: string;
+  // X moved screen_name/name from `legacy` to `core` in its 2026 schema revision;
+  // keep both so older/newer payload shapes are both tolerated.
+  core?: {
+    screen_name?: string;
+    name?: string;
+  };
+  legacy?: {
+    screen_name?: string;
+    name?: string;
+  };
+};
+
 type GraphqlTweetResult = {
   rest_id?: string;
   legacy?: {
@@ -98,12 +136,7 @@ type GraphqlTweetResult = {
   };
   core?: {
     user_results?: {
-      result?: {
-        legacy?: {
-          screen_name?: string;
-          name?: string;
-        };
-      };
+      result?: GraphqlUserResult;
     };
   };
 };
@@ -138,6 +171,18 @@ export interface GetTweetResult {
 export interface SearchResult {
   success: boolean;
   tweets?: TweetData[];
+  error?: string;
+}
+
+export interface UserData {
+  id: string;
+  username: string;
+  name: string;
+}
+
+export interface GetUserResult {
+  success: boolean;
+  user?: UserData;
   error?: string;
 }
 
@@ -254,7 +299,12 @@ export class TwitterClient {
   }
 
   private mapTweetResult(result: GraphqlTweetResult | undefined): TweetData | undefined {
-    if (!result?.legacy || !result.core?.user_results?.result?.legacy?.screen_name) return undefined;
+    const user = result?.core?.user_results?.result;
+    // Screen name/name live under `core` in the current schema, but fall back to
+    // `legacy` in case an older payload shape is ever encountered.
+    const username = user?.core?.screen_name || user?.legacy?.screen_name;
+    const name = user?.core?.name || user?.legacy?.name || username;
+    if (!result?.legacy || !username) return undefined;
     return {
       id: result.rest_id || '',
       text: result.legacy.full_text || '',
@@ -265,8 +315,8 @@ export class TwitterClient {
       conversationId: result.legacy.conversation_id_str,
       inReplyToStatusId: result.legacy.in_reply_to_status_id_str ?? undefined,
       author: {
-        username: result.core.user_results.result.legacy.screen_name,
-        name: result.core.user_results.result.legacy.name || result.core.user_results.result.legacy.screen_name,
+        username,
+        name: name || username,
       },
     };
   }
@@ -414,6 +464,148 @@ export class TwitterClient {
       return { success: true, tweet: mapped };
     }
     return { success: false, error: 'Tweet not found in response' };
+  }
+
+  /**
+   * Resolve a handle (screen name) to its user id/name via UserByScreenName.
+   */
+  async getUserByScreenName(handle: string): Promise<GetUserResult> {
+    const screenName = handle.replace(/^@/, '');
+    const variables = { screen_name: screenName };
+
+    const params = new URLSearchParams({
+      variables: JSON.stringify(variables),
+      features: JSON.stringify(USER_BY_SCREEN_NAME_FEATURES),
+      fieldToggles: JSON.stringify(USER_BY_SCREEN_NAME_FIELD_TOGGLES),
+    });
+
+    const url = `${TWITTER_API_BASE}/${QUERY_IDS.UserByScreenName}/UserByScreenName?${params}`;
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        return { success: false, error: `HTTP ${response.status}: ${text.slice(0, 200)}` };
+      }
+
+      const data = (await response.json()) as {
+        data?: {
+          user?: {
+            result?: GraphqlUserResult;
+          };
+        };
+        errors?: Array<{ message: string }>;
+      };
+
+      if (data.errors && data.errors.length > 0) {
+        return { success: false, error: data.errors.map((e) => e.message).join(', ') };
+      }
+
+      const result = data.data?.user?.result;
+      const username = result?.core?.screen_name || result?.legacy?.screen_name;
+      const name = result?.core?.name || result?.legacy?.name || username;
+
+      if (!result?.rest_id || !username) {
+        return { success: false, error: 'User not found in response' };
+      }
+
+      return {
+        success: true,
+        user: {
+          id: result.rest_id,
+          username,
+          name: name || username,
+        },
+      };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  /**
+   * Fetch a user's recent tweets (their profile timeline) via UserTweets.
+   */
+  async getUserTweets(userId: string, count = 20): Promise<SearchResult> {
+    const variables = {
+      userId,
+      count,
+      includePromotedContent: false,
+      withQuickPromoteEligibilityTweetFields: false,
+      withVoice: true,
+    };
+
+    const params = new URLSearchParams({
+      variables: JSON.stringify(variables),
+      features: JSON.stringify(TWEET_FEATURES),
+      fieldToggles: JSON.stringify(TWEET_FIELD_TOGGLES),
+    });
+
+    const url = `${TWITTER_API_BASE}/${QUERY_IDS.UserTweets}/UserTweets?${params}`;
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        return { success: false, error: `HTTP ${response.status}: ${text.slice(0, 200)}` };
+      }
+
+      const data = (await response.json()) as {
+        data?: {
+          user?: {
+            result?: {
+              timeline?: {
+                timeline?: {
+                  instructions?: Array<{
+                    type?: string;
+                    entries?: Array<{
+                      content?: {
+                        itemContent?: {
+                          tweet_results?: {
+                            result?: GraphqlTweetResult;
+                          };
+                        };
+                      };
+                    }>;
+                  }>;
+                };
+              };
+            };
+          };
+        };
+        errors?: Array<{ message: string }>;
+      };
+
+      if (data.errors && data.errors.length > 0) {
+        return { success: false, error: data.errors.map((e) => e.message).join(', ') };
+      }
+
+      const instructions = data.data?.user?.result?.timeline?.timeline?.instructions ?? [];
+      const tweets: TweetData[] = [];
+
+      for (const instruction of instructions) {
+        // TimelinePinEntry carries a pinned tweet in a singular `entry`, which
+        // we skip so it doesn't distort chronological ordering; the regular
+        // TimelineAddEntries `entries` list already covers recent tweets.
+        if (instruction.type === 'TimelinePinEntry') continue;
+        for (const entry of instruction.entries ?? []) {
+          const result = entry.content?.itemContent?.tweet_results?.result;
+          const mapped = this.mapTweetResult(result);
+          if (mapped) tweets.push(mapped);
+        }
+      }
+
+      return { success: true, tweets: tweets.slice(0, count) };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
   }
 
   /**
@@ -593,18 +785,24 @@ export class TwitterClient {
 
     const features = TWEET_FEATURES;
 
-    const params = new URLSearchParams({
-      variables: JSON.stringify(variables),
-      features: JSON.stringify(features),
-      fieldToggles: JSON.stringify(TWEET_FIELD_TOGGLES),
-    });
+    // SearchTimeline is registered as a GraphQL "query" but X's backend only
+    // accepts it as a POST with a JSON body (GET with querystring params 404s,
+    // even though the same param shape works for TweetDetail/UserTweets/etc.
+    // as GET). Confirmed live 2026-07-06: GET -> 404 empty body, POST -> 200.
+    const url = `${TWITTER_API_BASE}/${QUERY_IDS.SearchTimeline}/SearchTimeline`;
 
-    const url = `${TWITTER_API_BASE}/${QUERY_IDS.SearchTimeline}/SearchTimeline?${params}`;
+    const body = JSON.stringify({
+      variables,
+      features,
+      fieldToggles: TWEET_FIELD_TOGGLES,
+      queryId: QUERY_IDS.SearchTimeline,
+    });
 
     try {
       const response = await fetch(url, {
-        method: 'GET',
+        method: 'POST',
         headers: this.getHeaders(),
+        body,
       });
 
       if (!response.ok) {
@@ -625,27 +823,7 @@ export class TwitterClient {
                     content?: {
                       itemContent?: {
                         tweet_results?: {
-                          result?: {
-                            rest_id?: string;
-                            legacy?: {
-                              full_text?: string;
-                              created_at?: string;
-                              reply_count?: number;
-                              retweet_count?: number;
-                              favorite_count?: number;
-                              in_reply_to_status_id_str?: string;
-                            };
-                            core?: {
-                              user_results?: {
-                                result?: {
-                                  legacy?: {
-                                    screen_name?: string;
-                                    name?: string;
-                                  };
-                                };
-                              };
-                            };
-                          };
+                          result?: GraphqlTweetResult;
                         };
                       };
                     };
@@ -665,33 +843,8 @@ export class TwitterClient {
         };
       }
 
-      const tweets: TweetData[] = [];
-      const instructions = data.data?.search_by_raw_query?.search_timeline?.timeline?.instructions || [];
-
-      for (const instruction of instructions) {
-        for (const entry of instruction.entries || []) {
-          const result = entry.content?.itemContent?.tweet_results?.result;
-          if (!result) continue;
-
-          const legacy = result.legacy;
-          const userLegacy = result.core?.user_results?.result?.legacy;
-
-          if (legacy?.full_text && userLegacy?.screen_name) {
-            tweets.push({
-              id: result.rest_id || '',
-              text: legacy.full_text,
-              author: {
-                username: userLegacy.screen_name,
-                name: userLegacy.name || userLegacy.screen_name,
-              },
-              createdAt: legacy.created_at,
-              replyCount: legacy.reply_count,
-              retweetCount: legacy.retweet_count,
-              likeCount: legacy.favorite_count,
-            });
-          }
-        }
-      }
+      const instructions = data.data?.search_by_raw_query?.search_timeline?.timeline?.instructions;
+      const tweets = this.parseTweetsFromInstructions(instructions);
 
       return {
         success: true,

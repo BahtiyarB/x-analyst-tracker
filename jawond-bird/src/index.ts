@@ -751,6 +751,53 @@ program
     }
   });
 
+// User-tweets command - fetch a user's recent tweets from their profile timeline
+program
+  .command('user-tweets')
+  .description("Fetch a user's recent tweets by handle")
+  .argument('<handle>', 'Handle/username to fetch tweets for (e.g. "clawdbot" or "@clawdbot")')
+  .option('-n, --count <number>', 'Number of tweets to fetch', '20')
+  .option('--json', 'Output as JSON')
+  .action(async (handle: string, cmdOpts: { count?: string; json?: boolean }) => {
+    const opts = program.opts();
+    const count = Number.parseInt(cmdOpts.count || '20', 10);
+
+    const { cookies, warnings } = await resolveCredentials({
+      authToken: opts.authToken,
+      ct0: opts.ct0,
+      chromeProfile: opts.chromeProfile || config.chromeProfile,
+      firefoxProfile: opts.firefoxProfile || config.firefoxProfile,
+      allowChrome: config.allowChrome ?? true,
+      allowFirefox: config.allowFirefox ?? true,
+    });
+
+    for (const warning of warnings) {
+      console.error(`⚠️ ${warning}`);
+    }
+
+    if (!cookies.authToken || !cookies.ct0) {
+      console.error('❌ Missing required credentials');
+      process.exit(1);
+    }
+
+    const client = new TwitterClient({ cookies });
+
+    const userResult = await client.getUserByScreenName(handle);
+    if (!userResult.success || !userResult.user) {
+      console.error(`❌ Failed to resolve user @${handle.replace(/^@/, '')}: ${userResult.error}`);
+      process.exit(1);
+    }
+
+    const result = await client.getUserTweets(userResult.user.id, count);
+
+    if (result.success && result.tweets) {
+      printTweets(result.tweets, { json: cmdOpts.json, emptyMessage: 'No tweets found.' });
+    } else {
+      console.error(`❌ Failed to fetch tweets: ${result.error}`);
+      process.exit(1);
+    }
+  });
+
 // Mentions command - shortcut to search for @username mentions
 program
   .command('mentions')
