@@ -1,5 +1,7 @@
 # x-analyst-tracker
 
+> **📚 Ayrıntılı dokümanlar:** `docs/PROJECT.md` (kapsamlı proje dokümanı — bağımsız kullanım, mimari, dersler, taşıma) · `docs/HANDOFF.md` (geliştirmeye devam + Go/Rust/Python port rehberi).
+
 Kripto analistlerinin X (Twitter) hesaplarindan tweet toplayip
 sinyal-siniflama (signal classification) icin yapilandirilmis JSON'a
 ceviren, kendi basina calisabilen bir arac. ChainWise'in metin-sinyal
