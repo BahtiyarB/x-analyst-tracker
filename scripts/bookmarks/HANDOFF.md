@@ -271,8 +271,10 @@ node fetch_articles.mjs --file /tmp/thread_ids.txt x_threads_rawjson
 uv run --no-project python build_threads.py   # thread'leri ayikla
 uv run --no-project python build_html.py       # HTML'i thread bolumleriyle yeniden uret
 ```
-**Bulgu (2026-07-08):** 207 article bookmark'inin %28'i (60) thread ama cogu kisa (2 tweet).
-Non-article bookmark'larda uzun content-thread'ler beklenir (batch sonrasi gorulur).
+**Sonuc (2026-07-08, batch tamam):** 517 non-article raw cekildi (4 rate-limit penceresi, ~1 saat).
+Tum 724 bookmark islendi → **296 thread (%41)** + 428 tek tweet. Uzunluk: 198'i 2-tweet ama uzun
+kuyruk var — onlarca 6-21 tweet, en uzunu **31 tweet** (ortalama 4.6). 296 HTML'e "Thread (devamı)"
+bolumu islendi. Yani cok sayida bookmark aslinda uzun content-thread'iymis; artik tamami inline.
 
 ## 5. Scriptler — sırayla ne yapar
 
