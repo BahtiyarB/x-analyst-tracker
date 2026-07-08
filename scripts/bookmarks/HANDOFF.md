@@ -4,11 +4,20 @@
 > AI/kişi) bookmark projesini devralmak için kullan. Tüm scriptler, öğrenilenler,
 > yapılan seçimler, bilinen sınırlar burada.
 >
-> **Tarih:** 2026-07-08 · **Durum:** ✅ TAMAM (v3 — X Articles dahil).
+> **Tarih:** 2026-07-08 · **Durum:** ✅ TAMAM (v4 — HTML çıktı formatı).
 > Daha sonra "yeni bookmark'ları da al" ya da "ikinci tur medya çek" istenirse
 > tüm scriptler idempotent olarak yeniden koşulabilir.
 >
 > **Proje kökü:** `~/Projects/x-analyst-tracker/out/bookmarks_download/`
+>
+> **v4 değişikliği (2026-07-08):** Her bookmark artık `<tweet_id>.md` yerine
+> **anlamlı-adlı `.html`** olarak duruyor (`build_html.py`). Dosya adı = article
+> başlığı / metnin ilk kelimeleri / link path'i (hibrit). Medya HTML içinde inline
+> (`<img>` / `<video controls>`, relative `_media/` link). Eski `.md`'ler her
+> kategorideki `_md_backup/`'a taşındı. Detay: aşağıda **Adım 8** + `build_html.py`.
+> Not: lokal Qwen ("aggressive") descriptor için kullanılamadı (sürekli reasoning,
+> boş content) — metinsiz bookmark'larda link/author heuristiğine geçildi, LLM/ağ
+> bağımlılığı yok.
 
 ---
 
@@ -63,8 +72,12 @@ life-philosophy        3     misc                 302
 │   └── process_fast.err            # hata satırları
 ├── x_articles_raw/                 # 207 raw TweetDetail GraphQL yanıtı
 │   └── <tweet_id>.json             # her article için ham JSON
+├── _filemap.csv                    # (v4) tweet_id → yeni html adı eşlemesi
+├── _descriptor_cache.json          # (v4) dosya-adı kararları (yeniden koşuda stabil)
 ├── <kategori>/                     # 16 kategori klasörü
-│   ├── <tweet_id>.md               # bookmark markdown'ı (text + linkler + article body + medya listesi)
+│   ├── <descriptor>.html           # (v4) bookmark HTML'i — anlamlı ad, medya inline gömülü
+│   ├── _md_backup/
+│   │   └── <tweet_id>.md           # (v4) eski markdown yedeği (build_html.py taşıdı)
 │   ├── _media/
 │   │   └── <tweet_id>/
 │   │       ├── *.jpg               # foto
@@ -191,6 +204,45 @@ doğrudan çekince SPA render — HTML'de içerik yok.
 - Boyut: 1.9 MB (10 MB Telegram sınırının altında).
 - `curl` ile Telegram Bot API'sine POST.
 
+### Adım 8 — HTML çıktı formatı (`build_html.py`) — v4 (2026-07-08)
+**İstek:** `.md` formatı yerine, her bookmark **anlamlı-adlı bir `.html`** olsun;
+medya ayrı ayrı açılmasın, HTML içinde inline görünsün.
+
+**Ne yapar:**
+- Her `<kategori>/<tweet_id>.md`'yi okur (yeniden koşuda `_md_backup/`'tan).
+- **Dosya adı (hibrit descriptor):**
+  1. Article ise → article başlığının slug'ı (`x_articles_raw/<id>.json` title'ından)
+  2. Metin ≥ ~40 anlamlı karakter → ilk ~10 kelimeden slug (heuristik)
+  3. Metinsiz ama çözülmüş (t.co olmayan) link var → link path'inden slug
+     (ör. `github.com/anthropics/claude-code` → `anthropics-claude-code`)
+  4. Hiçbiri yok → `<username>-medya|gonderi`
+  - Slug: Türkçe translit + küçük harf + ~70 char cap. Çakışma → `-<id son 6>`.
+  - **Görünen H1 başlık** slug'dan ayrı: insan-okunur orijinal metin/başlık.
+- **HTML sayfası** (gömülü CSS, offline, responsive, light/dark): başlık + yazar +
+  tarih + metrik + orijinal link · tweet metni · **article gövdesi DraftJS ham
+  JSON'dan** (bold/italik/link + article-içi görseller remote `pbs.twimg` URL) ·
+  **medya galerisi** `<img>` / `<video controls>` relative `_media/<id>/...`.
+- Eski `.md` → `<kategori>/_md_backup/<id>.md` (silinmedi, taşındı).
+- `_filemap.csv` (tweet_id,kategori,eski_md,yeni_html,descriptor_kaynagi) +
+  `_descriptor_cache.json` (isim kararları — yeniden koşuda stabil).
+- **Sonuç:** 724 HTML (~0.7 sn). Kaynak: 206 title, 488 heuristic, 19 link, 11 author.
+  Kategori dağılımı birebir korundu, hepsi well-formed, ağ/LLM bağımlılığı yok.
+
+**KRİTİK öğrenilen:** Lokal Qwen `qwen3.6-35b-a3b-...-aggressive` descriptor için
+**kullanılamadı** — durmadan reasoning yapıp tüm token bütçesini `reasoning_content`'e
+harcıyor, `content` boş dönüyor (`/no_think` + assistant-prefill bile üretim yaptırmadı).
+Bu yüzden LLM fallback **link/author heuristiğiyle** değiştirildi. Descriptor pipeline'ı
+artık %100 deterministik + offline.
+
+**Yeniden koşma:**
+```bash
+cd ~/Projects/x-analyst-tracker/out/bookmarks_download
+uv run --no-project python build_html.py             # tüm 724 (idempotent)
+uv run --no-project python build_html.py --only misc # tek kategori
+BUILD_NO_MOVE=1 uv run --no-project python build_html.py --limit 5   # test (taşımadan)
+# Önizleme: python3 -m http.server 8137 --directory . → localhost:8137/<kategori>/<dosya>.html
+```
+
 ## 5. Scriptler — sırayla ne yapar
 
 | Dosya | Amaç | Girdi | Çıktı |
@@ -200,6 +252,7 @@ doğrudan çekince SPA render — HTML'de içerik yok.
 | `fix_articles.py` | HTML makale iyileştirme (GitHub README raw, auth işaretleme) | `_articles/*.html` | `_articles/*.README.md`, `*.AUTH_GATED` |
 | `fetch_articles.mjs` | X Article'larını TweetDetail GraphQL ile çek (auth'lu) | Article ID listesi | `x_articles_raw/<id>.json` |
 | `parse_articles.py` | Article JSON'unu Markdown'a çevir + reclassify | `x_articles_raw/*.json` | `.md` güncellenir, kategori taşınır |
+| `build_html.py` | **(v4)** `.md` → anlamlı-adlı `.html`, medya inline gömülü; `.md` → `_md_backup/` | `<kategori>/*.md` + `x_articles_raw/*.json` | `<kategori>/<descriptor>.html`, `_filemap.csv`, `_descriptor_cache.json` |
 | `process.py` | (arşiv — ilk yavaş versiyon) | — | — kullanma |
 | `fetch_x_articles.py` | (arşiv — syndication API ile başarısız article denemesi) | — | — kullanma |
 
@@ -483,5 +536,5 @@ Belirsizlik varsa kod inline yorumlarına ya da git log'una bak.
 
 Bu scriptler `scripts/bookmarks/` altında version-controlled (x-analyst-tracker repo,
 private GitHub remote). Çalışma verisi ve çıktılar `out/bookmarks_download/` altında
-(gitignore — 19GB medya). Yeniden koşarken scriptleri `out/bookmarks_download/`'a
+(gitignore — 19GB medya + HTML). Yeniden koşarken scriptleri `out/bookmarks_download/`'a
 kopyala ya da oradan çalıştır (path'ler ROOT = script dizini varsayar).
