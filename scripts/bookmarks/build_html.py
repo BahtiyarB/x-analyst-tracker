@@ -30,8 +30,23 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 ART_RAW = os.path.join(ROOT, "x_articles_raw")
 CACHE_PATH = os.path.join(ROOT, "_descriptor_cache.json")
 FILEMAP_PATH = os.path.join(ROOT, "_filemap.csv")
+THREADS_DIR = os.path.join(ROOT, "x_threads_raw")  # build_threads.py ciktisi (Faz 2)
 LLM_URL = os.environ.get("LLM_URL", "http://localhost:1234/v1/chat/completions")
 LLM_MODEL = os.environ.get("LLM_MODEL", "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive")
+
+sys.path.insert(0, ROOT)
+from thread_util import thread_to_html  # bookmark thread'i icin '## Thread' bolumu
+
+def load_thread_html(tid: str) -> str:
+    """x_threads_raw/<tid>.json varsa thread'in devamini (fokal HARIÇ) HTML'e cevir."""
+    p = os.path.join(THREADS_DIR, tid + ".json")
+    if not os.path.exists(p):
+        return ""
+    try:
+        th = json.load(open(p, encoding="utf-8"))
+    except Exception:
+        return ""
+    return thread_to_html(th)
 
 VIDEO_EXT = {".mp4", ".mov", ".webm", ".m4v"}
 IMG_EXT = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
@@ -363,17 +378,23 @@ figure.art-img img{max-width:100%;border-radius:8px}
 .media{margin-top:28px;display:grid;grid-template-columns:1fr;gap:14px}
 .media img,.media video{width:100%;max-width:100%;border-radius:10px;display:block;background:#000}
 .sec-label{font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:#a8a29e;margin:28px 0 8px}
+section.thread{margin-top:28px;border-top:1px solid #e7e5e4;padding-top:8px}
+.thread-tweet{display:flex;gap:12px;padding:14px 0;border-bottom:1px solid #f0efed}
+.thread-tweet:last-child{border-bottom:none}
+.thread-n{flex:0 0 auto;font-size:.75rem;color:#a8a29e;font-variant-numeric:tabular-nums;padding-top:3px}
+.thread-body{white-space:pre-wrap;min-width:0;word-wrap:break-word}
 @media (prefers-color-scheme:dark){
  body{background:#0c0a09;color:#e7e5e4}
- header.bm,section.article{border-color:#292524}
+ header.bm,section.article,section.thread{border-color:#292524}
  .byline,.byline a{color:#a8a29e}.meta{color:#78716c}
  section.article blockquote{border-color:#44403c;color:#d6d3d1}
  section.article pre{background:#1c1917}
+ .thread-tweet{border-color:#1c1917}
  .sec-label{color:#57534e}
 }
 """
 
-def render_page(meta: dict, descriptor: str, article_html: str | None) -> str:
+def render_page(meta: dict, descriptor: str, article_html: str | None, thread_html: str = "") -> str:
     uname = meta["username"]
     name = meta["name"] or uname
     url = meta["url"]
@@ -405,6 +426,11 @@ def render_page(meta: dict, descriptor: str, article_html: str | None) -> str:
     article_sec = ""
     if article_html and article_html.strip():
         article_sec = f'<section class="article">{article_html}</section>'
+
+    thread_sec = ""
+    if thread_html and thread_html.strip():
+        thread_sec = (f'<div class="sec-label">Thread (devamı)</div>'
+                      f'<section class="thread">{thread_html}</section>')
 
     media_html = ""
     if meta["media"]:
@@ -438,6 +464,7 @@ def render_page(meta: dict, descriptor: str, article_html: str | None) -> str:
 {links_html}
 {article_sec}
 {media_html}
+{thread_sec}
 </div>
 </body>
 </html>
@@ -558,7 +585,7 @@ def main():
     for (cat, tid, md_path, meta, art_html, desc_text, desc_display, desc_src, _sc) in prepared:
         fname = final_name[tid]
         out_path = os.path.join(ROOT, cat, fname)
-        page = render_page(meta, desc_display, art_html)
+        page = render_page(meta, desc_display, art_html, load_thread_html(tid))
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(page)
         written += 1
