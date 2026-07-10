@@ -165,7 +165,7 @@ def render_inline(text: str, style_ranges, entity_ranges, ent_map: dict) -> str:
     return "".join(out)
 
 def article_from_draftjs(tweet_id: str) -> tuple[str | None, str]:
-    """(html_body, title) doner; article yoksa (None, '')."""
+    """(html_body, title) doner; article yoksa (None, ''). x_articles_raw/<id>.json'dan okur."""
     path = os.path.join(ART_RAW, tweet_id + ".json")
     if not os.path.exists(path):
         return None, ""
@@ -173,6 +173,10 @@ def article_from_draftjs(tweet_id: str) -> tuple[str | None, str]:
         data = json.load(open(path, encoding="utf-8"))
     except Exception:
         return None, ""
+    return article_from_draftjs_data(data)
+
+def article_from_draftjs_data(data: dict) -> tuple[str | None, str]:
+    """Ham TweetDetail/Article JSON'undan (html_body, title). Ad-hoc HTML render de bunu kullanir."""
     # rekursif: content_state + article title + media_entities
     cs = []; titles = []; media_ents = []
     def walk(o):
