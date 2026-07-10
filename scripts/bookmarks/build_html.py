@@ -164,6 +164,14 @@ def render_inline(text: str, style_ranges, entity_ranges, ent_map: dict) -> str:
         out.append(seg)
     return "".join(out)
 
+def render_article_markdown(md: str) -> str:
+    """Article'daki MARKDOWN atomic entity'sini HTML'e cevir (cogunlukla ```kod/prompt``` blogu)."""
+    md = md.strip()
+    m = re.match(r"^```[^\n]*\n?(.*?)\n?```$", md, re.S)  # tek fenced code block
+    if m:
+        return f"<pre><code>{html.escape(m.group(1))}</code></pre>"
+    return md_block_to_html(md)  # aksi halde basit markdown (baslik/liste/paragraf)
+
 def article_from_draftjs(tweet_id: str) -> tuple[str | None, str]:
     """(html_body, title) doner; article yoksa (None, ''). x_articles_raw/<id>.json'dan okur."""
     path = os.path.join(ART_RAW, tweet_id + ".json")
@@ -199,12 +207,29 @@ def article_from_draftjs_data(data: dict) -> tuple[str | None, str]:
     for e in (state.get("entityMap") or []):
         if isinstance(e, dict) and "key" in e:
             ent_map[str(e["key"])] = e.get("value", {})
+    # media_id -> {kind: photo|video, src, poster}. Article'lar foto VE video icerir:
+    # foto -> media_info.original_img_url; video (AmplifyVideo) -> variants[] mp4 + preview_image.
     media_url = {}
     for me in media_ents:
         mid = str(me.get("media_id", ""))
-        url = (me.get("media_info") or {}).get("original_img_url")
-        if mid and url:
-            media_url[mid] = url
+        if not mid:
+            continue
+        mi = me.get("media_info") or {}
+        if mi.get("original_img_url"):
+            media_url[mid] = {"kind": "photo", "src": mi["original_img_url"]}
+        elif mi.get("variants"):
+            mp4 = [v for v in mi["variants"]
+                   if v.get("content_type") == "video/mp4" and v.get("url")]
+            if mp4:
+                def _score(v):  # bitrate cogu article video'sunda None -> URL'deki WxH'den sec
+                    if v.get("bitrate"):
+                        return v["bitrate"]
+                    r = re.search(r"/(\d+)x(\d+)/", v.get("url", ""))
+                    return int(r.group(1)) * int(r.group(2)) if r else 0
+                best = max(mp4, key=_score)
+                pv = mi.get("preview_image") or {}
+                poster = pv.get("original_img_url") or pv.get("url") or ""
+                media_url[mid] = {"kind": "video", "src": best["url"], "poster": poster}
 
     title = titles[0] if titles else ""
     out = []
@@ -232,19 +257,29 @@ def article_from_draftjs_data(data: dict) -> tuple[str | None, str]:
         elif btype == "blockquote":   out.append(f"<blockquote>{inner}</blockquote>")
         elif btype == "code-block":   out.append(f"<pre><code>{inner}</code></pre>")
         elif btype == "atomic":
-            img = None
+            # atomic bloklar: MEDIA (foto/video), DIVIDER (hr), MARKDOWN (kod/prompt blogu).
+            # icerik block.text'te DEGIL entity'de -> ayri ele alinmali, yoksa dusuyor.
             for r in (b.get("entityRanges") or []):
                 ent = ent_map.get(str(r["key"]))
                 if not ent: continue
-                if ent.get("type") == "MEDIA":
-                    for mi in ent.get("data", {}).get("mediaItems", []):
-                        url = media_url.get(str(mi.get("mediaId", "")))
-                        if url: img = url
-                elif ent.get("type") == "DIVIDER":
+                etype = ent.get("type"); data = ent.get("data", {}) or {}
+                if etype == "MEDIA":
+                    for mi in data.get("mediaItems", []):
+                        m = media_url.get(str(mi.get("mediaId", "")))
+                        if not m: continue
+                        if m["kind"] == "video":
+                            poster = f' poster="{html.escape(m["poster"])}"' if m.get("poster") else ""
+                            out.append(f'<figure class="art-img"><video controls preload="metadata"'
+                                       f'{poster} src="{html.escape(m["src"])}"></video></figure>')
+                        else:
+                            out.append(f'<figure class="art-img"><img loading="lazy" '
+                                       f'src="{html.escape(m["src"])}" alt=""></figure>')
+                elif etype == "DIVIDER":
                     out.append("<hr>")
-            if img:
-                out.append(f'<figure class="art-img"><img loading="lazy" '
-                           f'src="{html.escape(img)}" alt=""></figure>')
+                elif etype == "MARKDOWN":
+                    md = (data.get("markdown") or "").strip()
+                    if md:
+                        out.append(render_article_markdown(md))
         else:
             if inner.strip(): out.append(f"<p>{inner}</p>")
     close_list()
@@ -374,9 +409,10 @@ section.article p{margin:0 0 1em}
 section.article blockquote{margin:1em 0;padding:.2em 1em;border-left:3px solid #d6d3d1;color:#44403c}
 section.article ul,section.article ol{padding-left:1.4em}
 section.article li{margin:.25em 0}
-section.article pre{background:#f5f5f4;padding:12px;border-radius:8px;overflow:auto}
+section.article pre{background:#f5f5f4;padding:12px;border-radius:8px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+section.article pre code{font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 figure.art-img{margin:1.2em 0}
-figure.art-img img{max-width:100%;border-radius:8px}
+figure.art-img img,figure.art-img video{max-width:100%;border-radius:8px;display:block;background:#000}
 .links{margin:20px 0 0;padding:0;list-style:none;font-size:.9rem}
 .links li{margin:.2em 0;word-break:break-all}
 .media{margin-top:28px;display:grid;grid-template-columns:1fr;gap:14px}

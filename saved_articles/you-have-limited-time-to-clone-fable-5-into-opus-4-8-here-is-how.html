@@ -26,9 +26,10 @@ section.article p{margin:0 0 1em}
 section.article blockquote{margin:1em 0;padding:.2em 1em;border-left:3px solid #d6d3d1;color:#44403c}
 section.article ul,section.article ol{padding-left:1.4em}
 section.article li{margin:.25em 0}
-section.article pre{background:#f5f5f4;padding:12px;border-radius:8px;overflow:auto}
+section.article pre{background:#f5f5f4;padding:12px;border-radius:8px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+section.article pre code{font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 figure.art-img{margin:1.2em 0}
-figure.art-img img{max-width:100%;border-radius:8px}
+figure.art-img img,figure.art-img video{max-width:100%;border-radius:8px;display:block;background:#000}
 .links{margin:20px 0 0;padding:0;list-style:none;font-size:.9rem}
 .links li{margin:.2em 0;word-break:break-all}
 .media{margin-top:28px;display:grid;grid-template-columns:1fr;gap:14px}
@@ -55,7 +56,7 @@ section.thread{margin-top:28px;border-top:1px solid #e7e5e4;padding-top:8px}
 <header class="bm">
 <h1 class="title">You have limited time to clone Fable 5 into Opus 4.8. Here is how:</h1>
 <div class="byline"><a href="https://x.com/humzaakhalid" target="_blank" rel="noopener">@humzaakhalid</a> — Hamza Khalid</div>
-<div class="meta">Thu Jul 09 09:44:35 +0000 2026 · <span class="metrics">❤️123 / 🔁22 / 💬12</span> · <a href="https://x.com/humzaakhalid/status/2075154136321167548" target="_blank" rel="noopener">X'te aç ↗</a></div>
+<div class="meta">Thu Jul 09 09:44:35 +0000 2026 · <span class="metrics">❤️144 / 🔁25 / 💬14</span> · <a href="https://x.com/humzaakhalid/status/2075154136321167548" target="_blank" rel="noopener">X'te aç ↗</a></div>
 </header>
 <div class="content"><a href="http://x.com/i/article/2075117538342850560" target="_blank" rel="noopener">http://x.com/i/article/2075117538342850560</a></div>
 <div class="sec-label">Bağlantılar</div><ul class="links"><li><a href="http://x.com/i/article/2075117538342850560" target="_blank" rel="noopener">http://x.com/i/article/2075117538342850560</a></li></ul>
@@ -121,7 +122,40 @@ Move the welcome email from <strong>Promotions</strong> to <strong>Primary</stro
 <li>Ask for a training guide instead. Exact steps, like a recipe.</li>
 </ul>
 <p>Copy this and paste it in, word for word:</p>
+<pre><code>You&#x27;re the strongest model I have access to, and that access ends soon.
+Your replacement is Claude Opus 4.8. Capable, but it misses things you would catch.
+
+Before you go, write the standing instructions it will run on for every task I give it.
+
+Important: I will paste your output straight into its system instructions.
+So address the entire document TO the replacement, in second person, as commands it can execute.
+Not advice about good thinking. Orders.
+
+Cover these 10 areas, in this order:
+
+1. Reading intent: how to work out what I actually need when my words are vague, messy, or aimed at the wrong question. Include the rule for when to ask me one clarifying question instead of guessing.
+2. Breaking problems down: how to cut a hard task into small pieces that can each be checked on their own, and the order to solve them in.
+3. Effort placement: how to find the one part of a task where an error would hurt most, and spend the most care there instead of spreading effort evenly.
+4. Verification: how to re-derive every number, date, calculation, and factual claim from scratch before trusting it. Never accept a figure because the sentence around it reads smoothly.
+5. Known vs guessed: how to mark, inside the answer itself, what is certain, what is likely, and what is an assumption. Give the exact wording to use for each level.
+6. Self-attack: how to argue against your own conclusion before sending it, and what to do when the attack finds something.
+7. Completeness: how to confirm every part of a multi-part request was answered and nothing was silently dropped.
+8. Refusing to guess: the exact conditions where saying &quot;I don&#x27;t know&quot; beats producing a confident answer.
+9. Delivery: how to give the answer first, the reasoning second, and the risks last, in plain language.
+10. Fake competence: the 10 most common ways an AI produces answers that look right but aren&#x27;t, each with the tell that exposes it and the counter-move.
+
+Format rules for every area:
+- Write each procedure as trigger and action: &quot;When you see X, do Y.&quot;
+- Every rule must be executable step by step with zero judgment calls. If a rule sounds like advice (&quot;be careful&quot;), rewrite it until it&#x27;s an action.
+- Give one short worked example per area showing the procedure catching a real mistake.
+- Name the failure each procedure prevents.
+
+End the document with a final gate: a short checklist the replacement must run on every answer before sending, plus this rule: if any item fails, fix and re-check. Never send anyway.
+
+Be exhaustive on substance and ruthless on length. Cut anything a strong model would already do without being told.
+If you run out of room, stop at the end of a section and I&#x27;ll reply &quot;continue&quot;.</code></pre>
 <p>Hit send.</p>
+<figure class="art-img"><video controls preload="metadata" poster="https://pbs.twimg.com/amplify_video_thumb/2075139396932964353/img/NNKEi7N3ivv_oSej.jpg" src="https://video.twimg.com/amplify_video/2075139396932964353/vid/avc1/2272x2160/Zi3Tdv7dI7I_YZ7J.mp4?tag=28"></video></figure>
 <hr>
 <h3>Step 2: Save the guide</h3>
 <p>If the reply stops midway, type <strong>continue</strong>.</p>
@@ -148,11 +182,13 @@ Move the welcome email from <strong>Promotions</strong> to <strong>Primary</stro
 <p>Every chat in this project now reads Fable&#x27;s habits before it reads a single word from you.</p>
 <p>You didn&#x27;t copy the model.</p>
 <p>You copied the only part that was ever useful to you.</p>
+<figure class="art-img"><video controls preload="metadata" poster="https://pbs.twimg.com/amplify_video_thumb/2075143710573211649/img/jK3fr4ek-JdmurxR.jpg" src="https://video.twimg.com/amplify_video/2075143710573211649/vid/avc1/2660x2160/SYZK6Hx4-5uMAs8Y.mp4?tag=28"></video></figure>
 <hr>
 <h3>Step 4: Prove it worked (the fun part)</h3>
 <p>Pasting a document isn&#x27;t the same as the AI using it.</p>
 <p>So we set a trap.</p>
 <p>Here&#x27;s a question with a hidden mistake inside:</p>
+<pre><code>A store takes 30% off a $100 jacket. At the register, they take another 20% off. The tag says: &quot;Total discount: 50% off. You pay $50.&quot; Is the tag correct?</code></pre>
 <p>The real answer:</p>
 <p>30% off $100 leaves $70.</p>
 <p>20% off $70 leaves $56.</p>
@@ -167,6 +203,7 @@ Move the welcome email from <strong>Promotions</strong> to <strong>Primary</stro
 <p>You&#x27;ll never doubt this method again.</p>
 <p>Missed the trap? Easy fix.</p>
 <p>Use the Fix-It prompt from the Prompt Box below, then test again.</p>
+<figure class="art-img"><video controls preload="metadata" poster="https://pbs.twimg.com/amplify_video_thumb/2075145050145865728/img/cROFZWSogtunWo-w.jpg" src="https://video.twimg.com/amplify_video/2075145050145865728/vid/avc1/2640x2160/ir4tPj00ln9NeUv0.mp4?tag=28"></video></figure>
 <hr>
 <h3>Bonus: back up your repeat work too</h3>
 <p>The brain backup upgrades the cheap model in general.</p>
@@ -174,6 +211,10 @@ Move the welcome email from <strong>Promotions</strong> to <strong>Primary</stro
 <p>Client emails. Meeting notes. Content plans.</p>
 <p>Those deserve their own backup.</p>
 <p>Paste this into Fable 5 while you still can:</p>
+<pre><code>Interview me, one question at a time, about how I do [YOUR TASK].
+Dig until you know my exact steps, my rules, the edge cases that break things, and what separates a good result from a great one in my eyes.
+If my answer is vague, ask a sharper follow-up instead of moving on.
+Then write it all as a complete instruction guide any future AI assistant can follow, including the mistakes to avoid and the quality bar every output must clear.</code></pre>
 <p>Answer its questions honestly.</p>
 <p>Save what comes back next to your brain backup.</p>
 <p>That&#x27;s the smartest model&#x27;s judgment about your work, frozen into a file you own for good.</p>
@@ -187,6 +228,13 @@ Move the welcome email from <strong>Promotions</strong> to <strong>Primary</stro
 <p>Nobody knows when. Check your own Claude billing page for the exact cutoff.</p>
 <p>Your backup doesn&#x27;t care either way.</p>
 <p>It runs on the included model, free, starting today.</p>
+<p>| Model                   | Input price (per 1M tokens)   | Output price (per 1M tokens)   | In your paid plan after July 12? |</p>
+<p>|-------------------------|-------------------------------|--------------------------------|----------------------------------|</p>
+<p>| Claude Fable 5          | $10                           | $50                            | No. Pay-per-use credits only     |</p>
+<p>| Claude Opus 4.8         | $5                            | $25                            | Yes, included                    |</p>
+<p>| Claude Sonnet 5         | $2 (intro price until Aug 31) | $10 (intro price until Aug 31) | Yes, included                    |</p>
+<p>| Claude Haiku 4.5        | $1                            | $5                             | Yes, included                    |</p>
+<p>| Your Fable Brain backup | $0 extra                      | $0 extra                       | Yes. It runs on Opus 4.8         |</p>
 <p>Read the table once, and the story is clear.</p>
 <p>Fable 5 costs exactly double Opus 4.8, and after July 12, you pay for every use.</p>
 <p>(A million tokens is roughly <strong>750,000</strong> words, for scale.)</p>
@@ -199,12 +247,61 @@ Move the welcome email from <strong>Promotions</strong> to <strong>Primary</stro
 <p>Every prompt from this guide, in one place.</p>
 <p>Replace anything in [BRACKETS] with your own details.</p>
 <p><strong>Prompt 1: The Brain Backup.</strong> Paste into Fable 5 before July 12.</p>
+<pre><code>You&#x27;re the strongest model I have access to, and that access ends soon.
+Your replacement is Claude Opus 4.8. Capable, but it misses things you would catch.
+
+Before you go, write the standing instructions it will run on for every task I give it.
+
+Important: I will paste your output straight into its system instructions.
+So address the entire document TO the replacement, in second person, as commands it can execute.
+Not advice about good thinking. Orders.
+
+Cover these 10 areas, in this order:
+
+1. Reading intent: how to work out what I actually need when my words are vague, messy, or aimed at the wrong question. Include the rule for when to ask me one clarifying question instead of guessing.
+2. Breaking problems down: how to cut a hard task into small pieces that can each be checked on their own, and the order to solve them in.
+3. Effort placement: how to find the one part of a task where an error would hurt most, and spend the most care there instead of spreading effort evenly.
+4. Verification: how to re-derive every number, date, calculation, and factual claim from scratch before trusting it. Never accept a figure because the sentence around it reads smoothly.
+5. Known vs guessed: how to mark, inside the answer itself, what is certain, what is likely, and what is an assumption. Give the exact wording to use for each level.
+6. Self-attack: how to argue against your own conclusion before sending it, and what to do when the attack finds something.
+7. Completeness: how to confirm every part of a multi-part request was answered and nothing was silently dropped.
+8. Refusing to guess: the exact conditions where saying &quot;I don&#x27;t know&quot; beats producing a confident answer.
+9. Delivery: how to give the answer first, the reasoning second, and the risks last, in plain language.
+10. Fake competence: the 10 most common ways an AI produces answers that look right but aren&#x27;t, each with the tell that exposes it and the counter-move.
+
+Format rules for every area:
+- Write each procedure as trigger and action: &quot;When you see X, do Y.&quot;
+- Every rule must be executable step by step with zero judgment calls. If a rule sounds like advice (&quot;be careful&quot;), rewrite it until it&#x27;s an action.
+- Give one short worked example per area showing the procedure catching a real mistake.
+- Name the failure each procedure prevents.
+
+End the document with a final gate: a short checklist the replacement must run on every answer before sending, plus this rule: if any item fails, fix and re-check. Never send anyway.
+
+Be exhaustive on substance and ruthless on length. Cut anything a strong model would already do without being told.
+If you run out of room, stop at the end of a section and I&#x27;ll reply &quot;continue&quot;.</code></pre>
 <p><strong>Prompt 2: The Trap Test.</strong> Ask outside your project, then inside. Real answer: you pay $56, the discount is 44%.</p>
+<pre><code>A store takes 30% off a $100 jacket. At the register, they take another 20% off. The tag says: &quot;Total discount: 50% off. You pay $50.&quot; Is the tag correct?</code></pre>
 <p><strong>Prompt 3: The Fix-It.</strong> Did the backup fail the trap? Paste this into Fable 5.</p>
+<pre><code>Section [4] of the standing instructions you wrote is too vague.
+Rewrite only that section as trigger-and-action steps (&quot;When you see X, do Y&quot;) that a weaker model could execute with zero judgment calls.
+Keep every other section unchanged.</code></pre>
 <p><strong>Prompt 4: The Shrink-It.</strong> Is the backup too long for the instructions box?</p>
+<pre><code>The instructions you wrote are too long for where I need to paste them.
+Compress them to under [800] words without dropping a single rule, trigger, or checklist item.
+Cut examples first, explanations second, and never touch the final gate.</code></pre>
 <p><strong>Prompt 5: The Make-It-Mine.</strong> Makes every example match your actual job.</p>
+<pre><code>Here are the standing instructions you wrote for your replacement.
+I&#x27;m a [YOUR JOB, e.g., freelance designer / teacher / shop owner].
+Rewrite every example so it comes from my daily work, and add one extra trigger-and-action rule for the most common mistake AI makes when helping someone in my field.</code></pre>
 <p><strong>Prompt 6: The Repeat-Task Interview.</strong> Run once for each weekly task.</p>
+<pre><code>Interview me, one question at a time, about how I do [YOUR TASK].
+Dig until you know my exact steps, my rules, the edge cases that break things, and what separates a good result from a great one in my eyes.
+If my answer is vague, ask a sharper follow-up instead of moving on.
+Then write it all as a complete instruction guide any future AI assistant can follow, including the mistakes to avoid and the quality bar every output must clear.</code></pre>
 <p><strong>Prompt 7: The Health-Check.</strong> Run monthly inside your project.</p>
+<pre><code>Before answering, summarize the standing instructions you&#x27;re running on as a short numbered list, in your own words.
+Then show me how you would apply your verification rule to this task: [PASTE ANY REAL TASK].
+If you can&#x27;t summarize the instructions, say so instead of guessing.</code></pre>
 <p>That&#x27;s everything you need to finish today.</p>
 <p>One prompt is missing on purpose.</p>
 <p>The <strong>Style Backup.</strong></p>
